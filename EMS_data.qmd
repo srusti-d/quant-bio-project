@@ -1,0 +1,101 @@
+---
+title: "Final project option 2: EMS data analysis"
+author: "Srusti Donapati"
+format: 
+  html:
+    self-contained: true
+editor: visual
+---
+
+```{r setup, include=FALSE}
+options(repos="https://cran.rstudio.com" )
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+trauma <- read_csv("https://raw.githubusercontent.com/dkon1/quant_life_quarto/main/data/trauma_dataset.csv")
+install.packages('plyr', repos = "http://cran.us.r-project.org")
+install.packages("remotes", repos = "http://cran.us.r-project.org")
+remotes::install_github("easystats/report")
+library("report")
+install.packages("abind", repos = "http://cran.us.r-project.org")
+install.packages("car", dependencies = "Imports")
+install.packages("car", repos = "http://cran.us.r-project.org")
+library(car)
+install.packages('plyr', repos = "http://cran.us.r-project.org")
+```
+
+## **Final Project Question**
+
+Is there a difference in response time from injury scene arrival to injury scene departure (scene_arrive_dep) between various causes of injury (causeofinjury)?
+
+This question will be explored statistically using an ANOVA test. The explanatory variable will be "cause of injury," (causeofinjury) while the response variable will be "response time from injury scene arrival to injury scene departure" (scene_arrive_dep).
+
+The results of the data exploration will be visualized using a boxplot.
+
+The assumptions of the ANOVA test include will also be addressed using the boxplot visualization, as well as a QQplot. Details about such assumptions will be addressed later in this report.
+
+## Step 2: Data cleaning and filtering
+
+```{r}
+
+traumanew <- filter(trauma, causeofinjury != "Not Applicable" & causeofinjury != "Not Available" & causeofinjury != "Not Known") %>% #remove rows with unknown/na causes of injury
+  drop_na(causeofinjury, scene_arrive_dep) %>% # dropping na values 
+  group_by(causeofinjury) %>% 
+  reframe(count=n(), scene_arrive_dep) #added count column for understanding size of groups
+
+traumasecond <- filter(traumanew, count > 10)  #removing causes of injury with cases < 10 
+
+traumathird <- filter(traumasecond, scene_arrive_dep != 0)  #removing data points where scene_arrive_dep is 0 
+
+traumafinal <- filter(traumathird, scene_arrive_dep < 4000)  #removing outlier points > 4000 seconds
+
+traumafinal
+```
+
+I chose to remove data where the cause of injury was "Not Applicable", "Not Available" or "Not Known" because those groups are miscellaneous - they are not defined "causes of injury" which is necessary for my analysis. NA values throughout the "scene_arrive_dep" and "causeofinjury" columns were also dropped. In the EMS dataset, the counts for most of the causes of injury sub-categories were in the hundreds or thousands. However, some injury subcategories only had a couple data points. For example, "Water Transport accident," had only 2 data points and "Venomous stings (plants, animals)," had 6.
+
+At first, only the points with counts under 3 were removed, and the cause of injury vs. scene_arrive_dep was visualized using a boxplot. After visualizing boxplots including categories with fewer than 10 counts, I noticed that the boxes for those categories were much more elongated, or much shorter in length, compared to the other cause of injury categories. The skewed medians indicated that causes of injury with counts \< 10 should be removed because in those low count categories, one data point could easily skew the distribution of the box. The visualization also showed data points where there was a "0" for scene_arrive_dep, yet there was data for the other response time variables after checking the dataframe. Those were filtered out as well as they were assumed to be inaccurate data.
+
+The few injury scene arrival to departure response times over 4000 seconds were also filtered out. There are only 3 of these points in the causes of injury, but the values are much more extreme than the response times for the rest of the dataset, indicating that they are not representative of the data - thus they were removed.
+
+## Step 3: Data analysis and visualization
+
+```{r}
+ggplot(data= traumafinal, mapping=aes(x = causeofinjury, y = scene_arrive_dep)) + 
+  geom_boxplot() + coord_flip() + labs(title="Difference in Response Time for Injury Scene Arrival to Departure by Cause of Injury") + theme(text= element_text(size=8)) + ylab("Difference in Response Time for Injury Scene Arrival to Departure (seconds)") + xlab("Cause of Injury")
+```
+
+**Statistical Analysis & Modeling:**
+
+```{r}
+anova <- aov(scene_arrive_dep ~ causeofinjury, data= traumafinal)
+
+summary(anova)
+report(anova)
+```
+
+**Testing Normality Assumption:**
+
+```{r}
+
+hist(anova$residuals, main="Histogram of Residuals from ANOVA", cex.main= 0.9, xlab=" Residuals" ) #histogram of residuals
+
+qqPlot(log(anova$residuals),
+  id = FALSE 
+, xlab="Normal Quantiles", ylab="Log of Residuals", main="QQ Plot") #making a qqplot
+```
+
+The assumptions of the ANOVA test are: 1) Independence - the data should be independent between groups and within groups. 2) Normality - the residuals should have an approximately normal distribution. 3) Equality of variances - the variances should be equal between different groups in the population. 4) No significant outliers in the different groups.
+
+The independence assumption is not violated because the EMS study included all data from the Illinois Department of Public Health, so it is representative of the entire population of EMS cases in Chicago in the given time period. Additionally, response time from scene arrival to departure of one individual does not affect the response time for another individual, and each observation was collected for each unique individual.
+
+The normality assumption was not violated. Initially, the histogram of residuals appeared to be slightly skewed when tested visually - it does not show a perfect, bell-shaped curve. When these residuals were visualized on a QQplot, the residuals also did not appear normal. However, when a log transformation was applied to the data, the residuals appeared approximately normal. Hence, the normality assumption was not violated.
+
+The equality of variances assumption was not violated. This assumption was tested graphically using the boxplot visualization. Seeing that the boxes and the whiskers have a comparable size for all causes of injury, it can be assumed that the variances are equal among the causes of injuries.
+
+The "no outliers" assumption was not violated. Significant outliers were removed in the data cleaning process - the outliers were carefully selected for removal based on the fact that they were far from the interquartile range criterion and were not seen to be representative of the data.
+
+## Step 4: Interpretation and discussion
+
+I conducted an ANOVA test and boxplot visualization between cause of injury and response time from injury scene arrival to scene departure to answer the question: is there a difference in response time from injury scene arrival to injury scene departure (scene_arrive_dep) between various causes of injury (causeofinjury)? The ANOVA test produced a p-value \< 0.001 (p = 2 \* 10\^-16), which indicates that the effect of cause of injury on response time for injury scene arrival to departure is statistically significant and large. This allows the rejection of the null hypothesis that the response time from injury scene arrival to injury scene departure is the same between all causes of injury. I can conclude that at least one cause of injury is different than other causes of injury in response time from injury scene arrival to injury scene departure.
+
+So, I learned: yes -- there is a difference in response time from injury scene arrival to injury scene departure between various causes of injury. The 95% confidence interval of the ANOVA test is from \[0.04, 1.00\], which is a narrow interval, indicating that the differences between the groups is precise. This makes me fairly certain that there is a difference in response time from injury scene arrival to departure by cause of injury. The most challenging aspect of this project was the data cleaning and filtering - I had to determine how to remove the many NaNs in the dataset and make strategic decisions about removal of outliers or values which seemed unlikely/not representative of the dataset. However, I learned many valuable skills - especially about how ANOVA tests work, log transformations to ensure normality of data, and how to use ggplot and tidyverse tools for effective data analysis and visualization.
